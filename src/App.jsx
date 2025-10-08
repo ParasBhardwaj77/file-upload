@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import * as faceapi from "@vladmandic/face-api";
 import Tesseract from "tesseract.js";
-import Webcam from "react-webcam";
 import UploadIcon from "./assets/upload.svg";
 
 export default function App() {
@@ -11,10 +10,12 @@ export default function App() {
   const [faceImg, setFaceImg] = useState(null);
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [matchResult, setMatchResult] = useState(null);
-  const [similarityPercentage, setSimilarityPercentage] = useState(null);
-  const webcamRef = useRef(null);
+  const [uploadedFaceImg, setUploadedFaceImg] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [similarity, setSimilarity] = useState(null);
+  const [isComparing, setIsComparing] = useState(false);
   const faceImageRef = useRef(null);
+  const uploadedImageRef = useRef(null);
 
   useEffect(() => {
     const loadModels = async () => {
@@ -76,85 +77,6 @@ export default function App() {
       setFaceImg(canvas.toDataURL("image/png"));
     } else {
       console.warn("⚠️ No face detected");
-    }
-  };
-
-  // Face comparison function
-  const compareFaces = async () => {
-    if (!faceImg) {
-      alert("No detected face image available!");
-      return;
-    }
-    if (!webcamRef.current) {
-      alert("Webcam not available!");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setMatchResult(null);
-      setSimilarityPercentage(null);
-
-      // Create image element for detected face
-      const faceImage = new Image();
-      faceImage.src = faceImg;
-      await new Promise((resolve) => {
-        faceImage.onload = resolve;
-      });
-
-      // Detect face from detected face image
-      const faceDetection = await faceapi
-        .detectSingleFace(faceImage)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!faceDetection) {
-        alert("No face found in detected face image!");
-        setLoading(false);
-        return;
-      }
-
-      // Capture current frame from webcam
-      const canvas = document.createElement("canvas");
-      const video = webcamRef.current.video;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Detect face from webcam capture
-      const webcamDetection = await faceapi
-        .detectSingleFace(canvas)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!webcamDetection) {
-        alert("No face found in webcam capture!");
-        setLoading(false);
-        return;
-      }
-
-      // Calculate similarity using euclidean distance
-      const distance = faceapi.euclideanDistance(
-        faceDetection.descriptor,
-        webcamDetection.descriptor
-      );
-
-      // Convert distance to percentage (lower distance = higher similarity)
-      // Distance typically ranges from 0 to 1, where 0 is identical
-      const maxDistance = 1.0;
-      const similarity = Math.max(
-        0,
-        Math.round((1 - distance / maxDistance) * 100)
-      );
-
-      setSimilarityPercentage(similarity);
-      setMatchResult(`Distance: ${distance.toFixed(4)}`);
-      setLoading(false);
-    } catch (error) {
-      console.error("Face comparison error:", error);
-      alert("Error during face comparison. Please try again.");
-      setLoading(false);
     }
   };
 
@@ -560,6 +482,134 @@ export default function App() {
     }
   };
 
+  // Handle uploaded image and detect face
+  const handleUploadImage = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      setUploadedFaceImg(null);
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const imgSrc = e.target.result;
+
+        // Create image element for face detection
+        const img = new Image();
+        img.src = imgSrc;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
+
+        // Detect face using faceapi
+        const detection = await faceapi
+          .detectSingleFace(
+            img,
+            new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 })
+          )
+          .withFaceLandmarks();
+
+        if (detection) {
+          const { x, y, width, height } = detection.detection.box;
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+
+          // Add some margin around the face
+          const marginX = width * 0.3;
+          const marginY = height * 0.4;
+
+          const sx = Math.max(0, x - marginX);
+          const sy = Math.max(0, y - marginY);
+          const sWidth = width + marginX * 2;
+          const sHeight = height + marginY * 2;
+
+          canvas.width = sWidth;
+          canvas.height = sHeight;
+          ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
+
+          setUploadedFaceImg(canvas.toDataURL("image/png"));
+          setUploadedFile(file);
+        } else {
+          alert(
+            "No face detected in the uploaded image. Please try another image."
+          );
+        }
+        setLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error processing uploaded image:", error);
+      alert("Error processing image. Please try again.");
+      setLoading(false);
+    }
+  };
+
+  // Compare detected face with uploaded face
+  const compareFaces = async () => {
+    if (!faceImg || !uploadedFaceImg) {
+      alert('Please upload both images first');
+      return;
+    }
+
+    setIsComparing(true);
+    setSimilarity(null); // Reset previous similarity result
+    try {
+      // Load face detection models if not already loaded
+      const MODEL_URL = "/models";
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+
+      // Create image elements for both faces
+      const detectedFaceImg = new Image();
+      const uploadedFaceImgElement = new Image();
+      
+      detectedFaceImg.src = faceImg;
+      uploadedFaceImgElement.src = uploadedFaceImg;
+
+      // Wait for images to load
+      await new Promise((resolve) => {
+        detectedFaceImg.onload = resolve;
+      });
+      await new Promise((resolve) => {
+        uploadedFaceImgElement.onload = resolve;
+      });
+
+      // Detect faces and get descriptors
+      const detectedDetections = await faceapi
+        .detectSingleFace(detectedFaceImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      const uploadedDetections = await faceapi
+        .detectSingleFace(uploadedFaceImgElement, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      console.log('Detected face:', detectedDetections ? 'Found' : 'Not found');
+      console.log('Uploaded face:', uploadedDetections ? 'Found' : 'Not found');
+
+      if (!detectedDetections || !uploadedDetections) {
+        alert('Could not detect faces in one or both images');
+        return;
+      }
+
+      // Calculate similarity
+      const distance = faceapi.euclideanDistance(detectedDetections.descriptor, uploadedDetections.descriptor);
+      const similarityPercentage = Math.max(0, 100 - distance * 100);
+
+      console.log('Distance:', distance);
+      console.log('Similarity percentage:', similarityPercentage);
+
+      setSimilarity(similarityPercentage.toFixed(2));
+    } catch (error) {
+      console.error('Error comparing faces:', error);
+      alert('Error comparing faces. Please try again.');
+    } finally {
+      setIsComparing(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-gray-100">
       <main className="flex-1 bg-white p-6 shadow-md">
@@ -648,7 +698,7 @@ export default function App() {
         {/* Output */}
         <div className="pt-4">
           <h3 className="text-lg font-semibold mb-3">Uploaded Previews</h3>
-          <div className="gap-6">
+          <div className="flex gap-6">
             {frontImg && (
               <div>
                 <h4 className="text-sm font-medium mb-1 text-gray-600">
@@ -686,68 +736,87 @@ export default function App() {
               </div>
             )}
             {faceImg && (
-              <div>
-                <h4 className="text-sm font-medium mb-1 text-gray-600">
-                  Webcam
-                </h4>
-                <Webcam
-                  ref={webcamRef}
-                  audio={false}
-                  mirrored={true}
-                  screenshotFormat="image/jpeg"
-                  className="w-40 h-40 object-cover rounded-full border-2 border-blue-500"
-                />
+              <div className="mt-4">
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <svg
+                      className="w-8 h-8 mb-4 text-gray-500"
+                      aria-hidden="true"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 20 16"
+                    >
+                      <path
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"
+                      />
+                    </svg>
+                    <p className="mb-2 text-sm text-gray-500">
+                      <span className="font-semibold">Click to upload</span> or
+                      drag and drop
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      PNG, JPG, GIF (MAX. 5MB)
+                    </p>
+                  </div>
+                  <input
+                    id="dropzone-file"
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleUploadImage}
+                  />
+                </label>
               </div>
             )}
-            {faceImg && (
-              <div className="mt-4">
+            {uploadedFaceImg && (
+              <div className="flex flex-col items-center">
+                <h4 className="text-sm font-medium mb-1 text-gray-600">
+                  Uploaded Face
+                </h4>
+                <img
+                  ref={uploadedImageRef}
+                  src={uploadedFaceImg}
+                  alt="Uploaded Face"
+                  className="w-40 h-40 object-cover rounded-full border-2 border-purple-500"
+                />
                 <button
                   onClick={compareFaces}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  disabled={isComparing}
+                  className={`mt-2 px-6 py-2 rounded-lg font-medium transition-colors ${
+                    isComparing
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 hover:bg-blue-600 text-white'
+                  }`}
                 >
-                  Compare
+                  {isComparing ? 'Comparing...' : 'Compare Faces'}
                 </button>
+                {/* Similarity result under the button */}
+                {similarity !== null && (
+                  <div className="mt-4 p-3 rounded-lg border w-full text-center">
+                    <p className="text-lg font-bold text-blue-600">
+                      {similarity}% Similar
+                    </p>
+                    <p className={`text-sm mt-1 ${
+                      similarity >= 70 ? 'text-green-600' :
+                      similarity >= 50 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {similarity >= 70 ? 'High similarity - Likely the same person' :
+                       similarity >= 50 ? 'Medium similarity - Possibly the same person' :
+                       'Low similarity - Different persons'}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Processing indicator moved after all images */}
           {loading && <p className="text-blue-500 mt-2">Processing...</p>}
-
-          {/* Match result display */}
-          {matchResult && (
-            <div className="mt-4 p-4 bg-gray-50 rounded border">
-              <h4 className="text-lg font-semibold mb-2 text-gray-700">
-                Face Comparison Result
-              </h4>
-              <p
-                className={`text-lg font-medium ${
-                  similarityPercentage >= 70
-                    ? "text-green-600"
-                    : similarityPercentage >= 50
-                    ? "text-yellow-600"
-                    : "text-red-600"
-                }`}
-              >
-                Similarity: {similarityPercentage}%
-              </p>
-              <p
-                className={`mt-1 ${
-                  similarityPercentage >= 70
-                    ? "text-green-600"
-                    : similarityPercentage >= 50
-                    ? "text-yellow-600"
-                    : "text-red-600"
-                }`}
-              >
-                {similarityPercentage >= 70
-                  ? "✅ Strong Match"
-                  : similarityPercentage >= 50
-                  ? "⚠️ Possible Match"
-                  : "❌ Weak Match"}
-              </p>
-            </div>
-          )}
+          {isComparing && <p className="text-blue-500 mt-2">Comparing faces...</p>}
 
           {info && (
             <div className="mt-6 bg-gray-50 p-4 rounded border w-fit">
@@ -767,7 +836,7 @@ export default function App() {
                     : info.type === "PAN"
                     ? "PAN Number"
                     : "Nationality"}
-                  :
+                  
                 </strong>{" "}
                 {info.number}
               </p>
