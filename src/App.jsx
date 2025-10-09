@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import * as faceapi from "@vladmandic/face-api";
 import Tesseract from "tesseract.js";
 import UploadIcon from "./assets/upload.svg";
+import { EnhancedFaceDetectionService } from "./services/EnhancedFaceDetectionService";
 
 export default function App() {
   const [proofType, setProofType] = useState("");
@@ -14,18 +15,29 @@ export default function App() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [similarity, setSimilarity] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
+  const [similarityDetails, setSimilarityDetails] = useState(null);
   const faceImageRef = useRef(null);
   const uploadedImageRef = useRef(null);
+  const enhancedFaceService = useRef(new EnhancedFaceDetectionService());
 
   useEffect(() => {
     const loadModels = async () => {
       const MODEL_URL = "/models";
-      await Promise.all([
-        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-      ]);
-      console.log("✅ FaceAPI models loaded");
+      try {
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+          faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL),
+          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+        ]);
+        console.log("✅ All FaceAPI models loaded successfully");
+      } catch (error) {
+        console.error("❌ Error loading models:", error);
+        alert("Failed to load face detection models. Please refresh the page.");
+      }
     };
     loadModels();
   }, []);
@@ -545,25 +557,23 @@ export default function App() {
     }
   };
 
-  // Compare detected face with uploaded face
+  // Compare detected face with uploaded face using enhanced service
   const compareFaces = async () => {
     if (!faceImg || !uploadedFaceImg) {
-      alert('Please upload both images first');
+      alert("Please upload both images first");
       return;
     }
 
     setIsComparing(true);
-    setSimilarity(null); // Reset previous similarity result
+    setSimilarity(null);
+    setSimilarityDetails(null);
     try {
-      // Load face detection models if not already loaded
-      const MODEL_URL = "/models";
-      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      console.log("Starting face comparison...");
 
       // Create image elements for both faces
       const detectedFaceImg = new Image();
       const uploadedFaceImgElement = new Image();
-      
+
       detectedFaceImg.src = faceImg;
       uploadedFaceImgElement.src = uploadedFaceImg;
 
@@ -575,36 +585,172 @@ export default function App() {
         uploadedFaceImgElement.onload = resolve;
       });
 
-      // Detect faces and get descriptors
-      const detectedDetections = await faceapi
-        .detectSingleFace(detectedFaceImg, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+      console.log("✅ Images loaded for comparison");
 
-      const uploadedDetections = await faceapi
-        .detectSingleFace(uploadedFaceImgElement, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+      // Simple, reliable face detection with multiple attempts
+      const detectFaceWithFallback = async (imgElement, imageType) => {
+        console.log(`Detecting face for ${imageType}...`);
 
-      console.log('Detected face:', detectedDetections ? 'Found' : 'Not found');
-      console.log('Uploaded face:', uploadedDetections ? 'Found' : 'Not found');
+        // Attempt 1: Basic SSD detection
+        try {
+          console.log(`Attempt 1: SSD detection for ${imageType}`);
+          const detection = await faceapi
+            .detectSingleFace(
+              imgElement,
+              new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 })
+            )
+            .withFaceLandmarks()
+            .withFaceDescriptor();
 
-      if (!detectedDetections || !uploadedDetections) {
-        alert('Could not detect faces in one or both images');
+          if (detection && detection.descriptor) {
+            console.log(`✅ SSD detection successful for ${imageType}`);
+            return detection;
+          }
+        } catch (error) {
+          console.warn(`SSD detection failed for ${imageType}:`, error);
+        }
+
+        // Attempt 2: Tiny detector
+        try {
+          console.log(`Attempt 2: Tiny detector for ${imageType}`);
+          const detection = await faceapi
+            .detectSingleFace(
+              imgElement,
+              new faceapi.TinyFaceDetectorOptions({
+                inputSize: 416,
+                scoreThreshold: 0.1,
+              })
+            )
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detection && detection.descriptor) {
+            console.log(`✅ Tiny detection successful for ${imageType}`);
+            return detection;
+          }
+        } catch (error) {
+          console.warn(`Tiny detection failed for ${imageType}:`, error);
+        }
+
+        // Attempt 3: Very low confidence SSD
+        try {
+          console.log(`Attempt 3: Low confidence SSD for ${imageType}`);
+          const detection = await faceapi
+            .detectSingleFace(
+              imgElement,
+              new faceapi.SsdMobilenetv1Options({ minConfidence: 0.05 })
+            )
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detection && detection.descriptor) {
+            console.log(
+              `✅ Low confidence detection successful for ${imageType}`
+            );
+            return detection;
+          }
+        } catch (error) {
+          console.warn(
+            `Low confidence detection failed for ${imageType}:`,
+            error
+          );
+        }
+
+        console.log(`❌ All detection attempts failed for ${imageType}`);
+        return null;
+      };
+
+      // Detect faces for both images
+      const detectedFace = await detectFaceWithFallback(
+        detectedFaceImg,
+        "detected face"
+      );
+      const uploadedFace = await detectFaceWithFallback(
+        uploadedFaceImgElement,
+        "uploaded face"
+      );
+
+      if (!detectedFace || !uploadedFace) {
+        alert(
+          "Could not detect faces in one or both images. Please try with clearer face images, ensure faces are visible, and try different angles."
+        );
         return;
       }
 
-      // Calculate similarity
-      const distance = faceapi.euclideanDistance(detectedDetections.descriptor, uploadedDetections.descriptor);
-      const similarityPercentage = Math.max(0, 100 - distance * 100);
+      console.log("✅ Both faces detected successfully");
+      console.log("Detected face confidence:", detectedFace.detection.score);
+      console.log("Uploaded face confidence:", uploadedFace.detection.score);
 
-      console.log('Distance:', distance);
-      console.log('Similarity percentage:', similarityPercentage);
+      // Validate descriptors exist
+      if (!detectedFace.descriptor || !uploadedFace.descriptor) {
+        console.error("Missing descriptors:", {
+          detectedDescriptor: detectedFace.descriptor,
+          uploadedDescriptor: uploadedFace.descriptor,
+        });
+        alert(
+          "Could not extract face descriptors. Please try with clearer face images showing the full face directly."
+        );
+        return;
+      }
 
-      setSimilarity(similarityPercentage.toFixed(2));
+      console.log("✅ Descriptors extracted successfully");
+
+      // Calculate similarity using multiple methods
+      let similarityResult;
+
+      try {
+        // Try enhanced comparison first
+        similarityResult = enhancedFaceService.current.compareFaces(
+          detectedFace,
+          uploadedFace
+        );
+        console.log("✅ Enhanced comparison successful");
+      } catch (enhancedError) {
+        console.warn(
+          "Enhanced comparison failed, using basic method:",
+          enhancedError
+        );
+
+        // Fallback to basic euclidean distance
+        const distance = faceapi.euclideanDistance(
+          detectedFace.descriptor,
+          uploadedFace.descriptor
+        );
+        const basicSimilarity = Math.max(0, 100 - distance * 100);
+
+        similarityResult = {
+          overallSimilarity: basicSimilarity,
+          descriptorSimilarity: basicSimilarity,
+          qualityScore: Math.round(
+            ((detectedFace.detection.score || 0.5) +
+              (uploadedFace.detection.score || 0.5)) *
+              50
+          ),
+          confidence: Math.min(1, basicSimilarity / 100),
+          match: basicSimilarity > 70,
+          differences: [],
+          detailedMetrics: {},
+          featureSimilarity: {},
+        };
+      }
+
+      console.log("Final similarity result:", similarityResult);
+
+      // Set the results
+      setSimilarity(similarityResult.overallSimilarity.toFixed(2));
+      setSimilarityDetails({
+        descriptorSimilarity: similarityResult.descriptorSimilarity.toFixed(2),
+        qualityScore: similarityResult.qualityScore.toFixed(2),
+        confidence: similarityResult.confidence.toFixed(2),
+        match: similarityResult.match,
+        differences: similarityResult.differences || [],
+        detailedMetrics: similarityResult.detailedMetrics || {},
+        featureSimilarity: similarityResult.featureSimilarity || {},
+      });
     } catch (error) {
-      console.error('Error comparing faces:', error);
-      alert('Error comparing faces. Please try again.');
+      console.error("Error comparing faces:", error);
+      console.error("Error details:", error.stack);
+      alert(`Error comparing faces: ${error.message}. Please try again.`);
     } finally {
       setIsComparing(false);
     }
@@ -788,26 +934,128 @@ export default function App() {
                   disabled={isComparing}
                   className={`mt-2 px-6 py-2 rounded-lg font-medium transition-colors ${
                     isComparing
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-blue-500 hover:bg-blue-600 text-white"
                   }`}
                 >
-                  {isComparing ? 'Comparing...' : 'Compare Faces'}
+                  {isComparing ? "Comparing..." : "Compare Faces"}
                 </button>
                 {/* Similarity result under the button */}
                 {similarity !== null && (
-                  <div className="mt-4 p-3 rounded-lg border w-full text-center">
-                    <p className="text-lg font-bold text-blue-600">
-                      {similarity}% Similar
-                    </p>
-                    <p className={`text-sm mt-1 ${
-                      similarity >= 70 ? 'text-green-600' :
-                      similarity >= 50 ? 'text-yellow-600' : 'text-red-600'
-                    }`}>
-                      {similarity >= 70 ? 'High similarity - Likely the same person' :
-                       similarity >= 50 ? 'Medium similarity - Possibly the same person' :
-                       'Low similarity - Different persons'}
-                    </p>
+                  <div className="mt-4 space-y-3">
+                    <div className="p-3 rounded-lg border w-full text-center">
+                      <p className="text-lg font-bold text-blue-600">
+                        {similarity}% Similar
+                      </p>
+                      <p
+                        className={`text-sm mt-1 ${
+                          similarity >= 70
+                            ? "text-green-600"
+                            : similarity >= 50
+                            ? "text-yellow-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {similarity >= 70
+                          ? "High similarity - Likely the same person"
+                          : similarity >= 50
+                          ? "Medium similarity - Possibly the same person"
+                          : "Low similarity - Different persons"}
+                      </p>
+                    </div>
+
+                    {/* Detailed similarity breakdown */}
+                    {similarityDetails && (
+                      <div>
+                        {/* <h5 className="font-semibold mb-2 text-gray-700">Detailed Analysis:</h5>
+                        
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <span className="text-gray-600">Descriptor:</span>
+                            <span className="ml-1 font-medium">{similarityDetails.descriptorSimilarity}%</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Quality:</span>
+                            <span className="ml-1 font-medium">{similarityDetails.qualityScore}%</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Confidence:</span>
+                            <span className="ml-1 font-medium">{(similarityDetails.confidence * 100).toFixed(1)}%</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Match:</span>
+                            <span className={`ml-1 font-medium ${similarityDetails.match ? 'text-green-600' : 'text-red-600'}`}>
+                              {similarityDetails.match ? 'Yes' : 'No'}
+                            </span>
+                          </div>
+                        </div> */}
+
+                        {/* Feature similarity breakdown */}
+                        {Object.keys(similarityDetails.featureSimilarity)
+                          .length > 0 && (
+                          <div className="mt-2">
+                            <span className="text-gray-600">
+                              Feature Match:
+                            </span>
+                            <div className="mt-1 space-y-1">
+                              {Object.entries(
+                                similarityDetails.featureSimilarity
+                              ).map(([feature, score]) => (
+                                <div
+                                  key={feature}
+                                  className="flex justify-between"
+                                >
+                                  <span className="capitalize">{feature}:</span>
+                                  <span
+                                    className={`ml-2 ${
+                                      score >= 80
+                                        ? "text-green-600"
+                                        : score >= 60
+                                        ? "text-yellow-600"
+                                        : "text-red-600"
+                                    }`}
+                                  >
+                                    {score}%
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Differences found */}
+                        {similarityDetails.differences &&
+                          similarityDetails.differences.length > 0 && (
+                            <div className="mt-2">
+                              <span className="text-gray-600">
+                                Differences:
+                              </span>
+                              <div className="mt-1 space-y-1">
+                                {similarityDetails.differences.map(
+                                  (diff, index) => (
+                                    <div key={index} className="text-xs">
+                                      <span
+                                        className={`font-medium ${
+                                          diff.severity === "high"
+                                            ? "text-red-600"
+                                            : diff.severity === "medium"
+                                            ? "text-yellow-600"
+                                            : "text-blue-600"
+                                        }`}
+                                      >
+                                        {diff.type}:
+                                      </span>
+                                      <span className="ml-1">
+                                        {diff.description}
+                                      </span>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -816,7 +1064,9 @@ export default function App() {
 
           {/* Processing indicator moved after all images */}
           {loading && <p className="text-blue-500 mt-2">Processing...</p>}
-          {isComparing && <p className="text-blue-500 mt-2">Comparing faces...</p>}
+          {isComparing && (
+            <p className="text-blue-500 mt-2">Comparing faces...</p>
+          )}
 
           {info && (
             <div className="mt-6 bg-gray-50 p-4 rounded border w-fit">
@@ -836,7 +1086,6 @@ export default function App() {
                     : info.type === "PAN"
                     ? "PAN Number"
                     : "Nationality"}
-                  
                 </strong>{" "}
                 {info.number}
               </p>
