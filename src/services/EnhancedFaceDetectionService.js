@@ -1088,36 +1088,6 @@ export class EnhancedFaceDetectionService {
     }
   }
 
-  // Apply similarity percentage adjustments based on specific ranges
-  // applySimilarityAdjustments(similarity) {
-  //   try {
-  //     let adjustedSimilarity = similarity;
-
-  //     // Apply adjustments based on specific ranges
-  //     if (similarity >= 37 && similarity <= 44) {
-  //       // Add 15% for similarity between 37-44
-  //       adjustedSimilarity = similarity + 15;
-  //       console.log(`Applied +15% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
-  //     } else if (similarity >= 31 && similarity <= 36.99) {
-  //       // Decrease by 5% for similarity between 31-36.99
-  //       adjustedSimilarity = similarity - 5;
-  //       console.log(`Applied -5% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
-  //     } else if (similarity >= 57 && similarity <= 68) {
-  //       // Add 10% for similarity between 57-68
-  //       adjustedSimilarity = similarity + 10;
-  //       console.log(`Applied +10% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
-  //     }
-
-  //     // Ensure the adjusted similarity stays within valid range (0-100)
-  //     adjustedSimilarity = Math.max(0, Math.min(100, adjustedSimilarity));
-
-  //     return Math.round(adjustedSimilarity * 100) / 100; // Round to 2 decimal places
-  //   } catch (error) {
-  //     console.warn('Error applying similarity adjustments:', error);
-  //     return similarity; // Return original similarity if adjustment fails
-  //   }
-  // }
-
   applySimilarityAdjustments(similarity) {
     try {
       return Math.round(similarity * 100) / 100; // round to 2 decimals only
