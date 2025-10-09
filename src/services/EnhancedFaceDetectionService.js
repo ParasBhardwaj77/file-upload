@@ -21,7 +21,7 @@ export class EnhancedFaceDetectionService {
     try {
       // Multi-model detection for better accuracy
       const allDetections = [];
-      
+
       // Method 1: SSD MobileNet with higher confidence
       try {
         console.log('Trying SSD detection with confidence:', Math.max(minConfidence, 0.6));
@@ -96,7 +96,7 @@ export class EnhancedFaceDetectionService {
 
       // Remove duplicates and keep best detections
       const uniqueDetections = this.removeDuplicateDetections(allDetections);
-      
+
       if (uniqueDetections.length === 0) {
         return [];
       }
@@ -218,31 +218,31 @@ export class EnhancedFaceDetectionService {
   calculateEnhancedFaceQuality(detection) {
     try {
       const { box, landmarks, detection: { score } } = detection;
-      
+
       // Validate required properties
       if (!box || !box.width || !box.height) {
         return 0; // Invalid box
       }
-      
+
       // Base score from detection confidence
       let quality = score * 100;
-      
+
       // Size factor (larger faces are generally better quality)
       const faceSize = box.width * box.height;
       const sizeScore = Math.min(faceSize / 10000, 1) * 25;
       quality += sizeScore;
-      
+
       // Landmarks completeness (more landmarks = better quality)
       if (landmarks && landmarks.positions) {
         const landmarksScore = (landmarks.positions.length / 68) * 20;
         quality += landmarksScore;
       }
-      
+
       // Face aspect ratio (roughly square is better)
       const aspectRatio = box.width / box.height;
       const aspectScore = (aspectRatio > 0.7 && aspectRatio < 1.3) ? 15 : 5;
       quality += aspectScore;
-      
+
       // Center position bonus (faces in center are better)
       const centerX = box.x + box.width / 2;
       const centerY = box.y + box.height / 2;
@@ -252,7 +252,7 @@ export class EnhancedFaceDetectionService {
       );
       const centerBonus = Math.max(0, 20 - distanceFromCenter / 10);
       quality += centerBonus;
-      
+
       return Math.min(quality, 100);
     } catch (error) {
       console.warn('Error calculating face quality:', error);
@@ -264,7 +264,7 @@ export class EnhancedFaceDetectionService {
   analyzeFacialFeatures(detection) {
     try {
       const { landmarks } = detection;
-      
+
       // Validate landmarks
       if (!landmarks || !landmarks.positions || landmarks.positions.length < 68) {
         return {
@@ -276,24 +276,24 @@ export class EnhancedFaceDetectionService {
           featureConfidence: 0
         };
       }
-      
+
       const positions = landmarks.positions;
-      
+
       // Glasses detection using eye landmarks and nose bridge
       const glasses = this.detectGlasses(positions);
-      
+
       // Beard/mustache detection using mouth and chin area
       const facialHair = this.detectFacialHair(positions);
-      
+
       // Head pose estimation (simplified)
       const pose = this.estimateHeadPose(positions);
-      
+
       // Eye analysis
       const eyes = this.analyzeEyes(positions);
-      
+
       // Smile detection
       const smile = this.detectSmile(positions);
-      
+
       return {
         glasses,
         facialHair,
@@ -321,20 +321,20 @@ export class EnhancedFaceDetectionService {
       // Eye landmarks (left eye: 36-41, right eye: 42-47)
       const leftEye = positions.slice(36, 42);
       const rightEye = positions.slice(42, 48);
-      
+
       // Nose bridge landmarks (27-35)
       const noseBridge = positions.slice(27, 36);
-      
+
       // Calculate eye aspect ratio and other features
       const leftEyeEAR = this.calculateEyeAspectRatio(leftEye);
       const rightEyeEAR = this.calculateEyeAspectRatio(rightEye);
-      
+
       // Calculate distance between eyes and nose bridge
       const eyeToNoseDistance = this.calculateEyeToNoseDistance(leftEye, rightEye, noseBridge);
-      
+
       // Detect glasses based on multiple features
       const hasGlasses = this.classifyGlasses(leftEyeEAR, rightEyeEAR, eyeToNoseDistance);
-      
+
       return {
         hasGlasses,
         confidence: hasGlasses ? Math.max(leftEyeEAR, rightEyeEAR) : 0,
@@ -356,9 +356,9 @@ export class EnhancedFaceDetectionService {
       const vertical1 = this.getDistance(eyePoints[1], eyePoints[5]); // top to bottom
       const vertical2 = this.getDistance(eyePoints[2], eyePoints[4]); // inner to outer
       const horizontal = this.getDistance(eyePoints[0], eyePoints[3]); // outer to inner
-      
+
       if (horizontal === 0) return 0;
-      
+
       const ear = (vertical1 + vertical2) / (2 * horizontal);
       return Math.min(ear, 1); // Normalize to 0-1
     } catch (error) {
@@ -376,10 +376,10 @@ export class EnhancedFaceDetectionService {
         x: (leftEyeCenter.x + rightEyeCenter.x) / 2,
         y: (leftEyeCenter.y + rightEyeCenter.y) / 2
       };
-      
+
       // Calculate nose bridge center
       const noseCenter = this.getCenter(noseBridge);
-      
+
       // Calculate distance
       return this.getDistance(eyeCenter, noseCenter);
     } catch (error) {
@@ -392,21 +392,21 @@ export class EnhancedFaceDetectionService {
     // Glasses detection thresholds (these may need adjustment)
     const EAR_THRESHOLD = 0.25; // Lower than normal blink threshold
     const DISTANCE_THRESHOLD = 30; // Pixels (adjust based on image resolution)
-    
+
     // If both eyes have low EAR and distance is reasonable, likely glasses
     if (leftEyeEAR < EAR_THRESHOLD && rightEyeEAR < EAR_THRESHOLD) {
       if (eyeToNoseDistance > DISTANCE_THRESHOLD) {
         return true; // Glasses detected
       }
     }
-    
+
     // Additional heuristic: if one eye has very low EAR and other is normal
     // could indicate glasses reflection or obstruction
     if ((leftEyeEAR < EAR_THRESHOLD * 0.8 && rightEyeEAR > EAR_THRESHOLD * 1.2) ||
-        (rightEyeEAR < EAR_THRESHOLD * 0.8 && leftEyeEAR > EAR_THRESHOLD * 1.2)) {
+      (rightEyeEAR < EAR_THRESHOLD * 0.8 && leftEyeEAR > EAR_THRESHOLD * 1.2)) {
       return true; // Possible glasses
     }
-    
+
     return false;
   }
 
@@ -415,15 +415,15 @@ export class EnhancedFaceDetectionService {
     try {
       // Mouth landmarks (48-67)
       const mouth = positions.slice(48, 68);
-      
+
       // Chin landmarks (6-11, 8-14)
       const chin = positions.slice(6, 12);
-      
+
       // Analyze mouth area for hair indicators
       const mouthFeatures = this.analyzeMouthArea(mouth, chin);
-      
+
       return {
-        hasBeard: mouthFeatures.hasBeard, 
+        hasBeard: mouthFeatures.hasBeard,
         hasMustache: mouthFeatures.hasMustache,
         confidence: mouthFeatures.confidence,
         method: 'geometric_analysis'
@@ -439,18 +439,18 @@ export class EnhancedFaceDetectionService {
       // Calculate mouth width and height
       const mouthWidth = this.getDistance(mouth[0], mouth[6]);
       const mouthHeight = this.getDistance(mouth[3], mouth[9]);
-      
+
       // Calculate chin area
       const chinWidth = this.getDistance(chin[0], chin[6]);
-      
+
       // Simple heuristic: if mouth area is relatively small compared to chin
       // and has certain characteristics, it might indicate facial hair
       const mouthToChinRatio = mouthWidth / chinWidth;
-      
+
       // This is a simplified heuristic - in practice, you'd need more sophisticated analysis
       const hasBeard = mouthToChinRatio < 0.3 && mouthHeight / mouthWidth > 0.4;
       const hasMustache = mouthHeight / mouthWidth < 0.3;
-      
+
       return {
         hasBeard,
         hasMustache,
@@ -469,21 +469,21 @@ export class EnhancedFaceDetectionService {
       const noseTip = positions[30];
       const leftEye = positions[36];
       const rightEye = positions[45];
-      
+
       // Calculate relative positions
       const eyeToNoseVector = {
         x: noseTip.x - (leftEye.x + rightEye.x) / 2,
         y: noseTip.y - (leftEye.y + rightEye.y) / 2
       };
-      
+
       // Simple pose classification
       const angle = Math.atan2(eyeToNoseVector.y, eyeToNoseVector.x) * 180 / Math.PI;
-      
+
       let pose = 'frontal';
       if (angle > 15) pose = 'looking_down';
       else if (angle < -15) pose = 'looking_up';
       else if (Math.abs(eyeToNoseVector.x) > 10) pose = 'profile';
-      
+
       return {
         pose,
         angle: Math.round(angle),
@@ -499,14 +499,14 @@ export class EnhancedFaceDetectionService {
     try {
       const leftEye = positions.slice(36, 42);
       const rightEye = positions.slice(42, 48);
-      
+
       const leftEAR = this.calculateEyeAspectRatio(leftEye);
       const rightEAR = this.calculateEyeAspectRatio(rightEye);
-      
+
       // Detect eye state
       const leftEyeState = leftEAR > 0.2 ? 'open' : 'closed';
       const rightEyeState = rightEAR > 0.2 ? 'open' : 'closed';
-      
+
       return {
         leftEye: {
           state: leftEyeState,
@@ -529,21 +529,21 @@ export class EnhancedFaceDetectionService {
   detectSmile(positions) {
     try {
       const mouth = positions.slice(48, 68);
-      
+
       // Calculate mouth corners and center
       const leftCorner = mouth[0];
       const rightCorner = mouth[6];
       const topLip = mouth[13];
       const bottomLip = mouth[14];
-      
+
       // Calculate mouth width and height
       const mouthWidth = this.getDistance(leftCorner, rightCorner);
       const mouthHeight = this.getDistance(topLip, bottomLip);
-      
+
       // Smile detection: if mouth is wider than it is tall
       const smileRatio = mouthWidth / mouthHeight;
       const isSmiling = smileRatio > 2.5;
-      
+
       return {
         isSmiling,
         confidence: Math.min(smileRatio / 3, 1),
@@ -559,22 +559,22 @@ export class EnhancedFaceDetectionService {
     try {
       let confidence = 0;
       let count = 0;
-      
+
       if (glasses && !glasses.error) {
         confidence += glasses.confidence;
         count++;
       }
-      
+
       if (facialHair && !facialHair.error) {
         confidence += Math.max(facialHair.hasBeard, facialHair.hasMustache) ? facialHair.confidence : 0;
         count++;
       }
-      
+
       if (eyes) {
         confidence += Math.max(eyes.leftEye.confidence, eyes.rightEye.confidence);
         count++;
       }
-      
+
       return count > 0 ? confidence / count : 0;
     } catch (error) {
       return 0;
@@ -594,7 +594,7 @@ export class EnhancedFaceDetectionService {
       x: acc.x + point.x,
       y: acc.y + point.y
     }), { x: 0, y: 0 });
-    
+
     return {
       x: sum.x / points.length,
       y: sum.y / points.length
@@ -603,8 +603,8 @@ export class EnhancedFaceDetectionService {
 
   // Get the dominant expression from expressions object
   getDominantExpression(expressions) {
-    return Object.entries(expressions).reduce((max, [expression, value]) => 
-      value > max.value ? { expression, value } : max, 
+    return Object.entries(expressions).reduce((max, [expression, value]) =>
+      value > max.value ? { expression, value } : max,
       { expression: '', value: 0 }
     );
   }
@@ -612,24 +612,24 @@ export class EnhancedFaceDetectionService {
   // Calculate face quality score based on multiple factors
   calculateFaceQuality(detection) {
     const { box, landmarks, detection: { score } } = detection;
-    
+
     // Base score from detection confidence
     let quality = score * 100;
-    
+
     // Size factor (larger faces are generally better quality)
     const faceSize = box.width * box.height;
     const sizeScore = Math.min(faceSize / 10000, 1) * 20;
     quality += sizeScore;
-    
+
     // Landmarks completeness (more landmarks = better quality)
     const landmarksScore = (landmarks.positions.length / 68) * 15;
     quality += landmarksScore;
-    
+
     // Face aspect ratio (roughly square is better)
     const aspectRatio = box.width / box.height;
     const aspectScore = (aspectRatio > 0.7 && aspectRatio < 1.3) ? 10 : 5;
     quality += aspectScore;
-    
+
     return Math.min(quality, 100);
   }
 
@@ -666,83 +666,83 @@ export class EnhancedFaceDetectionService {
   // Calculate face similarity between two face descriptors with enhanced accuracy
   calculateFaceSimilarity(descriptor1, descriptor2) {
     if (!descriptor1 || !descriptor2) return 0;
-    
+
     try {
       // Advanced multiple distance metrics for maximum accuracy
       const euclideanDistance = faceapi.euclideanDistance(descriptor1, descriptor2);
-      
+
       // Cosine similarity (more robust to magnitude variations)
       const magnitude1 = Math.sqrt(descriptor1.reduce((sum, val) => sum + val * val, 0));
       const magnitude2 = Math.sqrt(descriptor2.reduce((sum, val) => sum + val * val, 0));
-      
+
       // Normalize descriptors to unit vectors for cosine similarity
       const normalized1 = descriptor1.map(val => val / magnitude1);
       const normalized2 = descriptor2.map(val => val / magnitude2);
-      
+
       const dotProduct = normalized1.reduce((sum, val, i) => sum + val * normalized2[i], 0);
       const cosineSimilarity = Math.max(0, dotProduct);
-      
+
       // Manhattan distance for additional robustness
       const manhattanDistance = descriptor1.reduce((sum, val, i) => sum + Math.abs(val - descriptor2[i]), 0);
       const manhattanSimilarity = Math.max(0, 100 - manhattanDistance * 10);
-      
+
       // Chi-squared distance for distribution comparison
       const chi2Distance = descriptor1.reduce((sum, val, i) => {
         const expected = (val + descriptor2[i]) / 2;
         return sum + Math.pow(val - expected, 2) / (expected + 1e-10);
       }, 0) / descriptor1.length;
       const chi2Similarity = Math.max(0, 100 - chi2Distance * 50);
-      
+
       // Combined similarity score with optimized weighted average
       const euclideanSimilarity = Math.max(0, 100 - euclideanDistance * 100);
       const cosineSimilarityScore = cosineSimilarity * 100;
-      
+
       // Dynamic weighting based on quality metrics
       const qualityMetrics = this.calculateAdvancedQualityMetrics(descriptor1, descriptor2);
       const weights = this.calculateOptimalWeights(qualityMetrics);
-      
+
       const combinedSimilarity = Math.round(
         (euclideanSimilarity * weights.euclidean) +
         (cosineSimilarityScore * weights.cosine) +
         (manhattanSimilarity * weights.manhattan) +
         (chi2Similarity * weights.chi2)
       );
-      
+
       // Enhanced quality-based adjustment
       const qualityAdjustment = this.calculateEnhancedQualityAdjustment(descriptor1, descriptor2, qualityMetrics);
       const finalSimilarity = Math.min(100, Math.max(0, combinedSimilarity + qualityAdjustment));
-      
+
       return finalSimilarity;
     } catch (error) {
       console.error('Error calculating face similarity:', error);
       return 0;
     }
   }
-  
+
   // Calculate advanced quality metrics for descriptors
   calculateAdvancedQualityMetrics(descriptor1, descriptor2) {
     try {
       const magnitude1 = Math.sqrt(descriptor1.reduce((sum, val) => sum + val * val, 0));
       const magnitude2 = Math.sqrt(descriptor2.reduce((sum, val) => sum + val * val, 0));
-      
+
       // Magnitude consistency
       const magnitudeRatio = Math.min(magnitude1, magnitude2) / Math.max(magnitude1, magnitude2);
-      
+
       // Descriptor variance (lower variance = more stable)
-      const variance1 = descriptor1.reduce((sum, val) => sum + Math.pow(val - magnitude1/descriptor1.length, 2), 0) / descriptor1.length;
-      const variance2 = descriptor2.reduce((sum, val) => sum + Math.pow(val - magnitude2/descriptor2.length, 2), 0) / descriptor2.length;
+      const variance1 = descriptor1.reduce((sum, val) => sum + Math.pow(val - magnitude1 / descriptor1.length, 2), 0) / descriptor1.length;
+      const variance2 = descriptor2.reduce((sum, val) => sum + Math.pow(val - magnitude2 / descriptor2.length, 2), 0) / descriptor2.length;
       const avgVariance = (variance1 + variance2) / 2;
-      
+
       // Signal-to-noise ratio
       const snr1 = magnitude1 / (Math.sqrt(variance1) + 1e-10);
       const snr2 = magnitude2 / (Math.sqrt(variance2) + 1e-10);
       const avgSNR = (snr1 + snr2) / 2;
-      
+
       // Descriptor stability (how close to unit vector)
       const stability1 = magnitude1 / Math.sqrt(descriptor1.length);
       const stability2 = magnitude2 / Math.sqrt(descriptor2.length);
       const avgStability = (stability1 + stability2) / 2;
-      
+
       return {
         magnitudeRatio,
         avgVariance,
@@ -762,12 +762,12 @@ export class EnhancedFaceDetectionService {
       };
     }
   }
-  
+
   // Calculate optimal weights based on quality metrics
   calculateOptimalWeights(qualityMetrics) {
     try {
       const { magnitudeRatio, avgSNR, avgStability } = qualityMetrics;
-      
+
       // Base weights
       let weights = {
         euclidean: 0.4,
@@ -775,7 +775,7 @@ export class EnhancedFaceDetectionService {
         manhattan: 0.15,
         chi2: 0.15
       };
-      
+
       // Adjust weights based on quality metrics
       if (magnitudeRatio > 0.9) {
         weights.euclidean += 0.1;
@@ -784,7 +784,7 @@ export class EnhancedFaceDetectionService {
         weights.cosine += 0.1;
         weights.euclidean -= 0.05;
       }
-      
+
       if (avgSNR > 15) {
         weights.euclidean += 0.05;
         weights.manhattan += 0.05;
@@ -792,20 +792,20 @@ export class EnhancedFaceDetectionService {
         weights.cosine += 0.1;
         weights.chi2 -= 0.05;
       }
-      
+
       if (avgStability > 0.8) {
         weights.euclidean += 0.05;
         weights.manhattan += 0.05;
       } else {
         weights.cosine += 0.1;
       }
-      
+
       // Normalize weights to sum to 1
       const total = Object.values(weights).reduce((sum, val) => sum + val, 0);
       Object.keys(weights).forEach(key => {
         weights[key] = weights[key] / total;
       });
-      
+
       return weights;
     } catch (error) {
       return {
@@ -816,31 +816,31 @@ export class EnhancedFaceDetectionService {
       };
     }
   }
-  
+
   // Calculate enhanced quality-based adjustment for similarity score
   calculateEnhancedQualityAdjustment(descriptor1, descriptor2, qualityMetrics) {
     try {
       const { magnitudeRatio, avgVariance, avgSNR, avgStability } = qualityMetrics;
-      
+
       let adjustment = 0;
-      
+
       // Magnitude consistency bonus
       adjustment += (magnitudeRatio - 0.8) * 15;
-      
+
       // Signal-to-noise ratio bonus
       adjustment += (avgSNR - 10) * 0.5;
-      
+
       // Stability bonus
       adjustment += (avgStability - 0.7) * 10;
-      
+
       // Variance penalty (higher variance = less reliable)
       adjustment -= (avgVariance - 0.1) * 20;
-      
+
       // Magnitude quality bonus
       const avgMagnitude = (qualityMetrics.magnitude1 + qualityMetrics.magnitude2) / 2;
       const magnitudeQuality = Math.min(1, avgMagnitude / 80);
       adjustment += (magnitudeQuality - 0.6) * 8;
-      
+
       // Cap the adjustment to prevent extreme values
       return Math.max(-15, Math.min(15, adjustment));
     } catch (error) {
@@ -848,52 +848,52 @@ export class EnhancedFaceDetectionService {
     }
   }
 
-  
+
   // Calculate face quality score for comparison
   calculateFaceQualityScore(face1, face2) {
     try {
       let qualityScore = 0;
       let count = 0;
-      
+
       if (face1.quality && face2.quality) {
         qualityScore += (face1.quality + face2.quality) / 2;
         count++;
       }
-      
+
       if (face1.confidence && face2.confidence) {
         qualityScore += (face1.confidence + face2.confidence) * 50; // Scale confidence to 0-100
         count++;
       }
-      
+
       if (face1.features && face2.features) {
         const featureQuality = (face1.features.featureConfidence || 0) + (face2.features.featureConfidence || 0);
         qualityScore += featureQuality * 25; // Scale feature confidence
         count++;
       }
-      
+
       return count > 0 ? qualityScore / count : 50;
     } catch (error) {
       return 50;
     }
   }
-  
+
   // Calculate confidence score based on similarity and quality
   calculateConfidenceScore(similarity, qualityScore) {
     try {
       // Base confidence from similarity
       let confidence = similarity / 100;
-      
+
       // Quality adjustment
       const qualityAdjustment = (qualityScore - 50) / 100;
       confidence += qualityAdjustment * 0.3;
-      
+
       // Ensure confidence is within 0-1 range
       return Math.max(0, Math.min(1, confidence));
     } catch (error) {
       return 0.5;
     }
   }
-  
+
   // Calculate detailed metrics for comparison analysis
   calculateDetailedMetrics(face1, face2) {
     try {
@@ -903,24 +903,24 @@ export class EnhancedFaceDetectionService {
         featureConsistency: 0,
         qualityDifference: 0
       };
-      
+
       if (face1.descriptor && face2.descriptor) {
         const magnitude1 = Math.sqrt(face1.descriptor.reduce((sum, val) => sum + val * val, 0));
         const magnitude2 = Math.sqrt(face2.descriptor.reduce((sum, val) => sum + val * val, 0));
         metrics.magnitudeRatio = Math.min(magnitude1, magnitude2) / Math.max(magnitude1, magnitude2);
-        
+
         const distance = faceapi.euclideanDistance(face1.descriptor, face2.descriptor);
         metrics.descriptorDistance = distance;
       }
-      
+
       if (face1.quality && face2.quality) {
         metrics.qualityDifference = Math.abs(face1.quality - face2.quality);
       }
-      
+
       if (face1.features && face2.features) {
         const featureKeys = ['glasses', 'facialHair', 'eyes', 'smile'];
         let consistentFeatures = 0;
-        
+
         featureKeys.forEach(key => {
           if (face1.features[key] && face2.features[key]) {
             if (key === 'glasses' || key === 'facialHair') {
@@ -932,10 +932,10 @@ export class EnhancedFaceDetectionService {
             }
           }
         });
-        
+
         metrics.featureConsistency = featureKeys.length > 0 ? consistentFeatures / featureKeys.length : 0;
       }
-      
+
       return metrics;
     } catch (error) {
       return {};
@@ -992,7 +992,7 @@ export class EnhancedFaceDetectionService {
     const avgFeatureScore = featureCount > 0 ? featureScore / featureCount : 0;
 
     return Math.round(
-      (descriptorSimilarity * weights.descriptor) + 
+      (descriptorSimilarity * weights.descriptor) +
       (avgFeatureScore * weights.features)
     );
   }
@@ -1057,9 +1057,9 @@ export class EnhancedFaceDetectionService {
       const detection = await faceapi
         .detectSingleFace(
           videoElement,
-          new faceapi.TinyFaceDetectorOptions({ 
-            inputSize: 416, 
-            scoreThreshold: 0.5 
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.5
           })
         )
         .withFaceLandmarks()
@@ -1089,32 +1089,41 @@ export class EnhancedFaceDetectionService {
   }
 
   // Apply similarity percentage adjustments based on specific ranges
+  // applySimilarityAdjustments(similarity) {
+  //   try {
+  //     let adjustedSimilarity = similarity;
+
+  //     // Apply adjustments based on specific ranges
+  //     if (similarity >= 37 && similarity <= 44) {
+  //       // Add 15% for similarity between 37-44
+  //       adjustedSimilarity = similarity + 15;
+  //       console.log(`Applied +15% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
+  //     } else if (similarity >= 31 && similarity <= 36.99) {
+  //       // Decrease by 5% for similarity between 31-36.99
+  //       adjustedSimilarity = similarity - 5;
+  //       console.log(`Applied -5% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
+  //     } else if (similarity >= 57 && similarity <= 68) {
+  //       // Add 10% for similarity between 57-68
+  //       adjustedSimilarity = similarity + 10;
+  //       console.log(`Applied +10% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
+  //     }
+
+  //     // Ensure the adjusted similarity stays within valid range (0-100)
+  //     adjustedSimilarity = Math.max(0, Math.min(100, adjustedSimilarity));
+
+  //     return Math.round(adjustedSimilarity * 100) / 100; // Round to 2 decimal places
+  //   } catch (error) {
+  //     console.warn('Error applying similarity adjustments:', error);
+  //     return similarity; // Return original similarity if adjustment fails
+  //   }
+  // }
+
   applySimilarityAdjustments(similarity) {
     try {
-      let adjustedSimilarity = similarity;
-      
-      // Apply adjustments based on specific ranges
-      if (similarity >= 37 && similarity <= 44) {
-        // Add 15% for similarity between 37-44
-        adjustedSimilarity = similarity + 15;
-        console.log(`Applied +15% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
-      } else if (similarity >= 31 && similarity <= 36.99) {
-        // Decrease by 5% for similarity between 31-36.99
-        adjustedSimilarity = similarity - 5;
-        console.log(`Applied -5% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
-      } else if (similarity >= 57 && similarity <= 68) {
-        // Add 10% for similarity between 57-68
-        adjustedSimilarity = similarity + 10;
-        console.log(`Applied +10% adjustment: ${similarity.toFixed(2)} → ${adjustedSimilarity.toFixed(2)}`);
-      }
-      
-      // Ensure the adjusted similarity stays within valid range (0-100)
-      adjustedSimilarity = Math.max(0, Math.min(100, adjustedSimilarity));
-      
-      return Math.round(adjustedSimilarity * 100) / 100; // Round to 2 decimal places
+      return Math.round(similarity * 100) / 100; // round to 2 decimals only
     } catch (error) {
-      console.warn('Error applying similarity adjustments:', error);
-      return similarity; // Return original similarity if adjustment fails
+      console.warn('Error returning similarity:', error);
+      return similarity;
     }
   }
 
@@ -1126,7 +1135,7 @@ export class EnhancedFaceDetectionService {
   // Compare current face with stored descriptor
   compareWithStoredFace(currentDescriptor) {
     if (!this.faceDescriptor || !currentDescriptor) return null;
-    
+
     const similarity = this.calculateFaceSimilarity(this.faceDescriptor, currentDescriptor);
     return {
       similarity: similarity.toFixed(2),
@@ -1139,7 +1148,7 @@ export class EnhancedFaceDetectionService {
   compareFaces(face1, face2) {
     try {
       console.log("EnhancedFaceDetectionService.compareFaces called");
-      
+
       // Validate inputs
       if (!face1 || !face2) {
         throw new Error("Invalid face objects");
@@ -1148,7 +1157,7 @@ export class EnhancedFaceDetectionService {
       // Extract descriptors with fallback
       const descriptor1 = face1.descriptor || (face1.detection && face1.detection.descriptor);
       const descriptor2 = face2.descriptor || (face2.detection && face2.detection.descriptor);
-      
+
       if (!descriptor1 || !descriptor2) {
         console.warn("Missing descriptors, using basic comparison");
         return {
@@ -1166,21 +1175,21 @@ export class EnhancedFaceDetectionService {
       // Calculate basic similarity
       const distance = faceapi.euclideanDistance(descriptor1, descriptor2);
       let similarity = Math.max(0, 100 - distance * 100);
-      
+
       // Apply similarity percentage adjustments based on specific ranges
       similarity = this.applySimilarityAdjustments(similarity);
-      
+
       // Get quality scores
       const quality1 = face1.quality || (face1.detection && face1.detection.score) || 0.5;
       const quality2 = face2.quality || (face2.detection && face2.detection.score) || 0.5;
       const avgQuality = (quality1 + quality2) / 2 * 100;
-      
+
       // Calculate confidence
       const confidence = Math.min(1, similarity / 100) * (avgQuality / 100);
-      
+
       // Match threshold
       const matchThreshold = 70 + (avgQuality / 100) * 10;
-      
+
       return {
         overallSimilarity: similarity,
         descriptorSimilarity: similarity,
@@ -1194,7 +1203,7 @@ export class EnhancedFaceDetectionService {
         },
         featureSimilarity: {}
       };
-      
+
     } catch (error) {
       console.error("Error in compareFaces:", error);
       return {
