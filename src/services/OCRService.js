@@ -54,6 +54,48 @@ export class OCRService {
       .filter(line => line.length > 0);
   }
 
+  // Estimate text size based on various heuristics
+  estimateTextSize(text) {
+    let sizeScore = 0;
+    
+    // Length of the line (longer lines might contain larger text)
+    sizeScore += text.length * 2;
+    
+    // Presence of digits (Aadhaar numbers are numeric)
+    const digitCount = (text.match(/\d/g) || []).length;
+    sizeScore += digitCount * 3;
+    
+    // Presence of spaces (Aadhaar numbers often have spaces)
+    const spaceCount = (text.match(/\s/g) || []).length;
+    sizeScore += spaceCount * 1;
+    
+    // Check if line contains only digits and spaces (typical Aadhaar format)
+    const isNumericOnly = /^[0-9\s]+$/.test(text);
+    if (isNumericOnly) {
+      sizeScore += 20;
+    }
+    
+    // Check for typical Aadhaar number patterns
+    const hasAadhaarPattern = /\d{4}\s?\d{4}\s?\d{4}/.test(text);
+    if (hasAadhaarPattern) {
+      sizeScore += 15;
+    }
+    
+    // Bonus for lines with exactly 12 digits (perfect match)
+    const hasExactly12Digits = (text.match(/\d/g) || []).length === 12;
+    if (hasExactly12Digits) {
+      sizeScore += 25;
+    }
+    
+    // Bonus for consecutive digits without other characters
+    const hasConsecutive12Digits = /\d{12}/.test(text);
+    if (hasConsecutive12Digits) {
+      sizeScore += 30;
+    }
+    
+    return sizeScore;
+  }
+
   // Extract Aadhaar card information
   async extractAadhaarInfo(textData, imageData) {
     try {
@@ -75,16 +117,75 @@ export class OCRService {
         }
       }
 
-      // Find Aadhaar number
-      const aadhaarLine = lines.find(line => 
-        /\d{4}\s?\d{4}\s?\d{4}/.test(line)
-      );
+      // Find Aadhaar number using specific logic:
+      // 1. Aadhar no. has exactly 12 numbers
+      // 2. Aadhar number is bigger in size as compared to other numbers
+      // 3. Numbers should be together (consecutive)
+      let potentialAadhaarNumbers = [];
       
-      if (aadhaarLine) {
-        aadhaarNumber = aadhaarLine
-          .replace(/\D/g, "")
-          .substring(0, 12)
-          .replace(/(\d{4})(?=\d)/g, "$1 ");
+      // First, find all lines with exactly 12 consecutive digits
+      for (const line of lines) {
+        // Find all sequences of exactly 12 consecutive digits
+        const matches = line.match(/\d{12}/g);
+        if (matches) {
+          matches.forEach(match => {
+            potentialAadhaarNumbers.push({
+              number: match,
+              line: line,
+              size: this.estimateTextSize(line),
+              consecutive: true,
+              digitCount: 12
+            });
+          });
+        }
+      }
+      
+      // If no exact 12-digit consecutive numbers found, look for lines with exactly 12 digits total
+      if (potentialAadhaarNumbers.length === 0) {
+        for (const line of lines) {
+          const allDigits = line.replace(/\D/g, '');
+          if (allDigits.length === 12) {
+            potentialAadhaarNumbers.push({
+              number: allDigits,
+              line: line,
+              size: this.estimateTextSize(line),
+              consecutive: true,
+              digitCount: 12
+            });
+          }
+        }
+      }
+      
+      // If still no match, look for lines with 12+ digits but extract only first 12
+      if (potentialAadhaarNumbers.length === 0) {
+        for (const line of lines) {
+          const allDigits = line.replace(/\D/g, '');
+          if (allDigits.length >= 12) {
+            // Extract only first 12 digits
+            const first12Digits = allDigits.substring(0, 12);
+            potentialAadhaarNumbers.push({
+              number: first12Digits,
+              line: line,
+              size: this.estimateTextSize(line),
+              consecutive: false,
+              digitCount: 12
+            });
+          }
+        }
+      }
+      
+      // Select the largest number (assuming Aadhaar numbers are bigger in size)
+      if (potentialAadhaarNumbers.length > 0) {
+        // Prioritize consecutive numbers over non-consecutive ones
+        potentialAadhaarNumbers.sort((a, b) => {
+          if (a.consecutive && !b.consecutive) return -1;
+          if (!a.consecutive && b.consecutive) return 1;
+          return b.size - a.size;
+        });
+        
+        // Ensure we only take exactly 12 digits
+        aadhaarNumber = potentialAadhaarNumbers[0].number.substring(0, 12);
+        aadhaarNumber = aadhaarNumber.replace(/(\d{4})(?=\d)/g, "$1 ");
       }
 
       // Extract additional information
@@ -240,3 +341,13 @@ export class OCRService {
 
       return {
         ...extractedInfo,
+        isProcessing: this.isProcessing
+      };
+    } catch (error) {
+      console.error('ID card processing error:', error);
+      throw new Error('ID card processing failed');
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+}
